@@ -1,0 +1,27 @@
+# Secretos — NO subir (la key de Supabase vive acá)
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Logs / temporales
+*.log
+streamlit_out.log
+streamlit_err.log
+
+# Capturas / adjuntos de trabajo
+supabase.png
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/settings.local.json
