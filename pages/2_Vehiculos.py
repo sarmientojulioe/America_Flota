@@ -135,6 +135,35 @@ with tab_lista:
                 }).eq("id", sel["id"]).execute()
                 st.rerun()
 
+    # Baja lógica del vehículo (reversible, conserva historial)
+    if puede_abm:
+        with st.expander("🗑️ Dar de baja este vehículo"):
+            st.warning(f"Vas a dar de baja **{sel['dominio']}**. "
+                       "Deja de aparecer en listados y controles, pero se conserva el historial. "
+                       "Es reversible desde 'Ver vehículos dados de baja'.")
+            if st.checkbox(f"Confirmo la baja de {sel['dominio']}", key="conf_baja"):
+                if st.button("Dar de baja", type="primary"):
+                    db.get_client().table("vehiculos").update(
+                        {"activo": False}).eq("id", sel["id"]).execute()
+                    st.success(f"{sel['dominio']} dado de baja.")
+                    st.rerun()
+
+    # Reactivar vehículos dados de baja
+    if puede_abm:
+        with st.expander("♻️ Ver vehículos dados de baja"):
+            bajas = [v for v in db.vehiculos(activos=False) if not v["activo"]]
+            if not bajas:
+                st.caption("No hay vehículos dados de baja.")
+            else:
+                rb = st.selectbox("Vehículo dado de baja", bajas,
+                                  format_func=lambda v: f"{v['dominio']} · {v['tipo'].title()}",
+                                  key="sel_baja")
+                if st.button(f"Reactivar {rb['dominio']}"):
+                    db.get_client().table("vehiculos").update(
+                        {"activo": True}).eq("id", rb["id"]).execute()
+                    st.success(f"{rb['dominio']} reactivado.")
+                    st.rerun()
+
     st.divider()
 
     items = db.items_vehiculo(sel["id"])
