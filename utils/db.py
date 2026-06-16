@@ -149,3 +149,30 @@ def registrar_control(vehiculo_id, grupo_id, observaciones, detalles: list[dict]
 def vencimientos(dias=60):
     data = get_client().table("v_vencimientos").select("*").execute().data
     return [d for d in data if d["dias_restantes"] is not None and d["dias_restantes"] <= dias]
+
+
+# ---------------- Bitácora de mantenimiento ----------------
+ESTADOS_BITACORA = ["en_proceso", "terminado", "en_seguimiento"]
+
+
+def bitacoras_de_vehiculo(vehiculo_id):
+    return (get_client().table("bitacoras").select("*")
+            .eq("vehiculo_id", vehiculo_id)
+            .order("nro_bitacora", desc=True).execute().data)
+
+
+def proximo_nro_bitacora(vehiculo_id) -> int:
+    data = (get_client().table("bitacoras").select("nro_bitacora")
+            .eq("vehiculo_id", vehiculo_id)
+            .order("nro_bitacora", desc=True).limit(1).execute().data)
+    return (data[0]["nro_bitacora"] + 1) if data else 1
+
+
+def guardar_bitacora(campos: dict, bitacora_id=None):
+    """Crea (bitacora_id=None) o actualiza una bitácora. Devuelve la fila."""
+    sb = get_client()
+    if bitacora_id:
+        campos["actualizado_en"] = "now()"
+        return sb.table("bitacoras").update(campos).eq("id", bitacora_id).execute().data[0]
+    campos["creado_por"] = st.session_state["perfil"]["id"]
+    return sb.table("bitacoras").insert(campos).execute().data[0]
