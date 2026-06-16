@@ -31,8 +31,18 @@ veh = st.selectbox("Vehículo", vehs,
 st.divider()
 st.subheader(f"{grupo['nombre']} — {veh['dominio']}")
 
-items_estado = {i["item_id"]: i for i in db.items_vehiculo(veh["id"], grupo["id"])}
-catalogo = db.items_de_grupo(grupo["id"])
+# Checklist propio del vehículo: solo los ítems asignados a ESTA unidad en el grupo
+# (respeta la personalización por ambulancia, no el catálogo completo del grupo).
+asignados = db.items_vehiculo(veh["id"], grupo["id"])
+items_estado = {a["item_id"]: a for a in asignados}
+catalogo = sorted(
+    (a["items_catalogo"] for a in asignados if a["items_catalogo"].get("activo", True)),
+    key=lambda c: c["nombre"])
+
+if not catalogo:
+    st.info("Este vehículo no tiene ítems de este grupo asignados. "
+            "Asignalos desde Vehículos → 🧩 Personalizar ítems de este vehículo.")
+    st.stop()
 
 resultados = {}
 with st.form("control"):
