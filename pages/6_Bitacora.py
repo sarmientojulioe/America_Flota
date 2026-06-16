@@ -1,7 +1,7 @@
 """Bitácora de Mantenimiento (ISO R SR 07) - carga e historial por móvil."""
 import streamlit as st
 from datetime import date
-from utils import db, ui
+from utils import db, ui, pdf_bitacora
 
 st.set_page_config(page_title="Bitácora | FlotaApp", page_icon="🛠️", layout="wide")
 ui.aplicar_estilos()
@@ -137,6 +137,14 @@ with tab_hist:
                 st.markdown(f"**Se observa:** {b.get('se_observa') or '-'}")
                 st.markdown(f"**Acciones:** {b.get('acciones') or '-'}")
                 st.markdown(f"**Observaciones:** {b.get('observaciones') or '-'}")
+                try:
+                    st.download_button(
+                        "📄 Descargar PDF (R SR 07)",
+                        data=pdf_bitacora.generar_pdf_bitacora(b, veh),
+                        file_name=f"bitacora_{veh['dominio']}_N{b['nro_bitacora']}.pdf",
+                        mime="application/pdf", key=f"pdf_{b['id']}")
+                except Exception as e:
+                    st.warning(f"No se pudo generar el PDF: {e}")
                 if puede_mant:
                     if st.checkbox("✏️ Editar esta bitácora", key=f"edit_{b['id']}"):
                         _form_bitacora(veh, datos=b, bitacora_id=b["id"])
