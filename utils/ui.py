@@ -41,17 +41,15 @@ ITEM_COLOR = {"ok": OK, "alerta": WARN, "faltante": DANGER, "vencido": DANGER}
 
 
 def aplicar_estilos():
+    # Tema base (claro, paleta corporativa, sidebar gris) vía .streamlit/config.toml,
+    # igual que la app Cotizaciones. Acá solo se aplican las tipografías oficiales
+    # del Manual de marca (Lato para títulos, Open Sans para textos) y los
+    # componentes propios de FlotaApp (badges, tarjetas de vehículo).
     st.markdown(f"""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&family=Open+Sans:wght@400;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&family=Open+Sans:wght@400;600;700&display=swap');
     html, body, [class*="css"] {{ font-family: 'Open Sans', sans-serif; }}
     h1, h2, h3 {{ font-family: 'Lato', sans-serif; color: {NAVY}; }}
-    .stButton>button {{
-        background-color: {BLUE_MED}; color: white; border: none; border-radius: 6px;
-    }}
-    .stButton>button:hover {{ background-color: {NAVY}; color: white; }}
-    [data-testid="stSidebar"] {{ background-color: {NAVY}; }}
-    [data-testid="stSidebar"] * {{ color: white !important; }}
     .badge {{
         display:inline-block; padding:4px 12px; border-radius:12px;
         color:white; font-weight:600; font-size:0.85rem;

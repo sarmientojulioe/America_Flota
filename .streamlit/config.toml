@@ -1,0 +1,17 @@
+# Configuración de Streamlit — FlotaApp (alineado a Cotizaciones / Manual de marca AAD)
+
+[theme]
+base = "light"
+primaryColor = "#2884C7"               # azul medio corporativo (Manual de marca, pág. 9)
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#EDEDED"   # gris claro corporativo (sidebar)
+textColor = "#3C3C3C"                  # gris oscuro corporativo
+
+[server]
+address = "0.0.0.0"                    # accesible desde la LAN (otros equipos), no sólo localhost
+port = 8501
+headless = true
+runOnSave = true
+
+[browser]
+gatherUsageStats = false
