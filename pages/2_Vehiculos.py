@@ -164,6 +164,49 @@ with tab_lista:
                     st.success(f"{rb['dominio']} reactivado.")
                     st.rerun()
 
+    # Checklist propio de la ambulancia: agregar/quitar ítems del catálogo
+    if puede_abm:
+        with st.expander("🧩 Personalizar ítems de este vehículo"):
+            st.caption("Cada ambulancia puede tener su propia lista. Agregá o quitá "
+                       "ítems del catálogo solo para esta unidad.")
+            sb = db.get_client()
+            catalogo = (sb.table("items_catalogo")
+                        .select("id, nombre, grupos_control(nombre)")
+                        .eq("activo", True).execute().data)
+            asignados = {i["item_id"] for i in db.items_vehiculo(sel["id"])}
+
+            def _etiqueta(c):
+                g = (c.get("grupos_control") or {}).get("nombre", "")
+                return f"{g} · {c['nombre']}"
+
+            disponibles = [c for c in catalogo if c["id"] not in asignados]
+            asignados_cat = [c for c in catalogo if c["id"] in asignados]
+
+            st.markdown("**➕ Agregar ítems** (del catálogo, aún no asignados)")
+            add = st.multiselect("Ítems a agregar", disponibles,
+                                 format_func=_etiqueta, key="add_items")
+            if add and st.button("Agregar al vehículo"):
+                try:
+                    sb.table("vehiculo_items").insert([
+                        {"vehiculo_id": sel["id"], "item_id": c["id"], "estado": "faltante",
+                         "actualizado_por": st.session_state["perfil"]["id"]} for c in add]).execute()
+                    st.success(f"{len(add)} ítem(s) agregado(s).")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"No se pudo agregar: {e}")
+
+            st.markdown("**➖ Quitar ítems** (de este vehículo)")
+            rem = st.multiselect("Ítems a quitar", asignados_cat,
+                                 format_func=_etiqueta, key="rem_items")
+            if rem and st.button("Quitar del vehículo"):
+                try:
+                    sb.table("vehiculo_items").delete().eq("vehiculo_id", sel["id"]) \
+                        .in_("item_id", [c["id"] for c in rem]).execute()
+                    st.success(f"{len(rem)} ítem(s) quitado(s).")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"No se pudo quitar: {e}")
+
     st.divider()
 
     items = db.items_vehiculo(sel["id"])
