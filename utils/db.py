@@ -55,6 +55,44 @@ def vehiculos(activos=True):
     return q.execute().data
 
 
+TIPOS_VEHICULO = ["ambulancia", "utilitario", "camioneta", "auto", "camion", "otro"]
+
+
+def crear_vehiculo(dominio, tipo, marca=None, modelo=None, anio=None, interno=None):
+    """Crea un vehículo e inicializa sus ítems de control aplicables según el
+    tipo (todos en estado 'faltante'). Devuelve el vehículo creado.
+    Usado tanto por el alta individual como por la importación masiva."""
+    sb = get_client()
+    veh = sb.table("vehiculos").insert({
+        "dominio": dominio, "interno": interno or None, "tipo": tipo,
+        "marca": marca or None, "modelo": modelo or None,
+        "anio": int(anio) if anio else None,
+    }).execute().data[0]
+    grupos = sb.table("grupos_control").select("*").execute().data
+    aplicables = [g["id"] for g in grupos
+                  if (tipo == "ambulancia" and g["aplica_ambulancia"])
+                  or (tipo != "ambulancia" and g["aplica_general"])]
+    if aplicables:
+        items = (sb.table("items_catalogo").select("id")
+                 .in_("grupo_id", aplicables).eq("activo", True).execute().data)
+        if items:
+            sb.table("vehiculo_items").insert([
+                {"vehiculo_id": veh["id"], "item_id": i["id"], "estado": "faltante",
+                 "actualizado_por": st.session_state["perfil"]["id"]}
+                for i in items]).execute()
+    return veh
+
+
+def crear_grupo(nombre, rol_responsable, aplica_ambulancia=True,
+                aplica_general=False, orden=0):
+    """Crea un grupo de control. Devuelve el grupo creado."""
+    return get_client().table("grupos_control").insert({
+        "nombre": nombre, "rol_responsable": rol_responsable,
+        "aplica_ambulancia": bool(aplica_ambulancia),
+        "aplica_general": bool(aplica_general), "orden": int(orden),
+    }).execute().data[0]
+
+
 def grupos_para_rol(rol: str):
     sb = get_client()
     q = sb.table("grupos_control").select("*").order("orden")

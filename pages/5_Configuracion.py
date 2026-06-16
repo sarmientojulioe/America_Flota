@@ -1,7 +1,7 @@
 """Configuración - catálogo de ítems, pesos y grupos de control."""
 import streamlit as st
 import pandas as pd
-from utils import db, ui
+from utils import db, ui, importer
 
 st.set_page_config(page_title="Configuración | FlotaApp", page_icon="⚙️", layout="wide")
 ui.aplicar_estilos()
@@ -39,6 +39,65 @@ if es_admin:
                     }).execute()
                     st.success(f"Grupo '{g_nombre}' creado.")
                     st.rerun()
+
+    with st.expander("📥 Importar grupos desde Excel/CSV"):
+        COLS = ["nombre", "rol_responsable", "aplica_ambulancia", "aplica_general", "orden"]
+        ejemplo = {"nombre": "Seguridad", "rol_responsable": "jefe_flota",
+                   "aplica_ambulancia": "si", "aplica_general": "si", "orden": "6"}
+        st.download_button("📥 Descargar plantilla (Excel)",
+                           data=importer.plantilla_excel(COLS, ejemplo),
+                           file_name="plantilla_grupos.xlsx", mime=importer.XLSX_MIME,
+                           key="tpl_grupos")
+        up = st.file_uploader("Archivo de grupos (.xlsx / .csv)",
+                              type=["xlsx", "csv"], key="imp_grupos")
+        if up:
+            try:
+                df = importer.leer_archivo(up)
+            except Exception as e:
+                st.error(f"No se pudo leer el archivo: {e}")
+                st.stop()
+            if "nombre" not in df.columns or "rol_responsable" not in df.columns:
+                st.error("Faltan columnas obligatorias: nombre, rol_responsable.")
+                st.stop()
+            nombres_exist = {g["nombre"].lower() for g in grupos}
+            vistos, filas = set(), []
+            for _, r in df.iterrows():
+                nom = str(r.get("nombre", "")).strip()
+                rl = str(r.get("rol_responsable", "")).strip().lower()
+                motivo = ""
+                if not nom:
+                    motivo = "Nombre vacío"
+                elif rl not in ROLES:
+                    motivo = f"Rol inválido (usar: {', '.join(ROLES)})"
+                elif nom.lower() in nombres_exist:
+                    motivo = "Ya existe"
+                elif nom.lower() in vistos:
+                    motivo = "Duplicado en el archivo"
+                vistos.add(nom.lower())
+                filas.append({
+                    "nombre": nom, "rol_responsable": rl,
+                    "aplica_ambulancia": importer.parse_bool(r.get("aplica_ambulancia", "si")),
+                    "aplica_general": importer.parse_bool(r.get("aplica_general", "no")),
+                    "orden": str(r.get("orden", "")).strip(),
+                    "✔": "OK" if not motivo else f"⚠️ {motivo}",
+                })
+            validas = [f for f in filas if f["✔"] == "OK"]
+            st.dataframe(filas, use_container_width=True, hide_index=True)
+            st.info(f"{len(validas)} fila(s) válidas de {len(filas)}.")
+            if validas and st.button(f"Importar {len(validas)} grupo(s)"):
+                ok, errores = 0, []
+                for f in validas:
+                    try:
+                        orden = int(f["orden"]) if f["orden"].isdigit() else 0
+                        db.crear_grupo(f["nombre"], f["rol_responsable"],
+                                       f["aplica_ambulancia"], f["aplica_general"], orden)
+                        ok += 1
+                    except Exception as e:
+                        errores.append(f"{f['nombre']}: {e}")
+                st.success(f"{ok} grupo(s) importado(s).")
+                if errores:
+                    st.error("Errores:\n- " + "\n- ".join(errores))
+                st.rerun()
 
 # Cada responsable edita su grupo; mesa operativa y superadmin editan todo
 editables = grupos if es_admin else [g for g in grupos if g["rol_responsable"] == rol]

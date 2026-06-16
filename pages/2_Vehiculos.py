@@ -1,25 +1,28 @@
-"""Vehículos - ABM y detalle por grupos."""
+"""Vehículos - ABM, importación masiva y detalle por grupos."""
 import streamlit as st
-from utils import db, ui
+from utils import db, ui, importer
 
 st.set_page_config(page_title="Vehículos | FlotaApp", page_icon="🚑", layout="wide")
 ui.aplicar_estilos()
 db.require_login()
 
 rol = db.rol_actual()
+puede_abm = rol in ("superadmin", "resp_mesa_operativa", "jefe_flota")
 st.title("Vehículos")
 
-tab_lista, tab_alta = st.tabs(["Listado / Detalle", "Alta de vehículo"])
+tab_lista, tab_alta, tab_import = st.tabs(
+    ["Listado / Detalle", "Alta de vehículo", "Importar"])
 
+# ============================ ALTA INDIVIDUAL ============================
 with tab_alta:
-    if rol not in ("superadmin", "resp_mesa_operativa", "jefe_flota"):
+    if not puede_abm:
         st.warning("No tenés permisos para dar de alta vehículos.")
     else:
         with st.form("alta"):
             c1, c2, c3 = st.columns(3)
             dominio = c1.text_input("Dominio *").upper().strip()
             interno = c2.text_input("N° interno")
-            tipo = c3.selectbox("Tipo *", ["ambulancia", "utilitario", "camioneta", "auto", "camion", "otro"])
+            tipo = c3.selectbox("Tipo *", db.TIPOS_VEHICULO)
             c4, c5, c6 = st.columns(3)
             marca = c4.text_input("Marca")
             modelo = c5.text_input("Modelo")
@@ -28,27 +31,87 @@ with tab_alta:
                 if not dominio:
                     st.error("El dominio es obligatorio.")
                 else:
-                    sb = db.get_client()
-                    veh = sb.table("vehiculos").insert({
-                        "dominio": dominio, "interno": interno, "tipo": tipo,
-                        "marca": marca, "modelo": modelo, "anio": int(anio),
-                    }).execute().data[0]
-                    # Inicializar ítems aplicables
-                    grupos = sb.table("grupos_control").select("*").execute().data
-                    aplicables = [g["id"] for g in grupos
-                                  if (tipo == "ambulancia" and g["aplica_ambulancia"])
-                                  or (tipo != "ambulancia" and g["aplica_general"])]
-                    items = (sb.table("items_catalogo").select("id")
-                             .in_("grupo_id", aplicables).eq("activo", True).execute().data)
-                    if items:
-                        sb.table("vehiculo_items").insert([
-                            {"vehiculo_id": veh["id"], "item_id": i["id"],
-                             "estado": "faltante",
-                             "actualizado_por": st.session_state["perfil"]["id"]}
-                            for i in items]).execute()
-                    st.success(f"Vehículo {dominio} creado con {len(items)} ítems de control pendientes.")
-                    st.rerun()
+                    try:
+                        veh = db.crear_vehiculo(dominio, tipo, marca, modelo, anio, interno)
+                        n = len(db.items_vehiculo(veh["id"]))
+                        st.success(f"Vehículo {dominio} creado con {n} ítems de control pendientes.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"No se pudo crear: {e}")
 
+# ============================ IMPORTACIÓN MASIVA ============================
+with tab_import:
+    if not puede_abm:
+        st.warning("No tenés permisos para importar vehículos.")
+    else:
+        st.caption("Cargá varios vehículos de una vez desde un Excel o CSV. "
+                   "Cada vehículo inicializa sus ítems de control según el tipo.")
+        COLS = ["dominio", "tipo", "interno", "marca", "modelo", "anio"]
+        ejemplo = {"dominio": "AB123CD", "tipo": "ambulancia", "interno": "101",
+                   "marca": "Mercedes-Benz", "modelo": "Sprinter", "anio": "2022"}
+        st.download_button(
+            "📥 Descargar plantilla (Excel)",
+            data=importer.plantilla_excel(COLS, ejemplo),
+            file_name="plantilla_vehiculos.xlsx", mime=importer.XLSX_MIME)
+
+        up = st.file_uploader("Archivo de vehículos (.xlsx / .csv)",
+                              type=["xlsx", "csv"], key="imp_veh")
+        if up:
+            try:
+                df = importer.leer_archivo(up)
+            except Exception as e:
+                st.error(f"No se pudo leer el archivo: {e}")
+                st.stop()
+
+            faltan = [c for c in ("dominio", "tipo") if c not in df.columns]
+            if faltan:
+                st.error(f"Faltan columnas obligatorias: {', '.join(faltan)}. "
+                         "Usá la plantilla.")
+                st.stop()
+
+            existentes = {v["dominio"].upper() for v in db.vehiculos(activos=False)}
+            vistos, filas = set(), []
+            for _, r in df.iterrows():
+                dom = str(r.get("dominio", "")).upper().strip()
+                tip = str(r.get("tipo", "")).lower().strip()
+                motivo = ""
+                if not dom:
+                    motivo = "Dominio vacío"
+                elif tip not in db.TIPOS_VEHICULO:
+                    motivo = f"Tipo inválido (usar: {', '.join(db.TIPOS_VEHICULO)})"
+                elif dom in existentes:
+                    motivo = "Ya existe en el sistema"
+                elif dom in vistos:
+                    motivo = "Dominio duplicado en el archivo"
+                vistos.add(dom)
+                filas.append({
+                    "dominio": dom, "tipo": tip,
+                    "interno": str(r.get("interno", "")).strip(),
+                    "marca": str(r.get("marca", "")).strip(),
+                    "modelo": str(r.get("modelo", "")).strip(),
+                    "anio": str(r.get("anio", "")).strip(),
+                    "✔": "OK" if not motivo else f"⚠️ {motivo}",
+                })
+
+            validas = [f for f in filas if f["✔"] == "OK"]
+            st.dataframe(filas, use_container_width=True, hide_index=True)
+            st.info(f"{len(validas)} fila(s) válidas de {len(filas)}.")
+
+            if validas and st.button(f"Importar {len(validas)} vehículo(s)"):
+                ok, errores = 0, []
+                for f in validas:
+                    try:
+                        db.crear_vehiculo(f["dominio"], f["tipo"], f["marca"],
+                                          f["modelo"], f["anio"] or None, f["interno"])
+                        ok += 1
+                    except Exception as e:
+                        errores.append(f"{f['dominio']}: {e}")
+                st.success(f"{ok} vehículo(s) importado(s).")
+                if errores:
+                    st.error("Errores:\n- " + "\n- ".join(errores))
+                st.rerun()
+
+# ============================ LISTADO / DETALLE ============================
 with tab_lista:
     vehs = db.vehiculos()
     if not vehs:
