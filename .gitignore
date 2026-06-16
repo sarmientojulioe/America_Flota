@@ -1,5 +1,6 @@
 # Secretos — NO subir (la key de Supabase vive acá)
 .streamlit/secrets.toml
+.gittoken
 
 # Python
 __pycache__/
@@ -16,6 +17,8 @@ streamlit_err.log
 
 # Capturas / adjuntos de trabajo
 supabase.png
+scripts/_manual/
+scripts/_probe/
 
 # Editores / SO
 .vscode/
